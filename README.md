@@ -15,3 +15,4 @@ https://www.youtube.com/playlist?list=PLU_xkKjd8rewZeuLtGL2OJ-i7ObBmJJZ7
   - day 4: https://www.youtube.com/watch?v=nINYp6Rzpj8
   - day 5: https://www.youtube.com/watch?v=GvgH3P5eQIM   > 2 horas
   - day 6: https://www.youtube.com/watch?v=IUEijJQSWJM
+  - day 7: https://www.youtube.com/watch?v=MdB9IT-ZNzE  > 1h40 - mas o problema em si é tranquilo
