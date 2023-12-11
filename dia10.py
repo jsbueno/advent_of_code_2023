@@ -22,6 +22,8 @@ reverse_connect = {v: k for k, v in connect_map.items()}
 
 
 class Maze:
+    loop_color = (0, 255, 255)
+    enclosed_color = (255, 0, 0)
     def __init__(self, data):
         self.data = data.split("\n")
         self.width = len(self.data[0])
@@ -40,7 +42,7 @@ class Maze:
 
     def directions(self, pos):
         char = self[pos]
-        return connect_map[char]
+        return connect_map.get(char, 0)
 
     def mark_starting_pos(self, pos):
         if self[pos] != "S":
@@ -60,7 +62,7 @@ class Maze:
         line = list(self.data[y])
         line[x] = starting_char
         self.data[y] = "".join(line)
-        self.colors[pos] = (0, 255, 0)
+        self.clear_colors()
 
     def iterpos(self):
         for x in range(0, self.width):
@@ -93,13 +95,14 @@ class Maze:
         for x, y in self.iterpos():
             pos = x, y
             directions = self.directions(pos)
+            dl((0,0))
             if directions & N: dl((0, -1))
             if directions & E: dl((1, 0))
             if directions & S: dl((0, 1))
             if directions & W: dl((-1, 0))
         pygame.display.update()
 
-    def walk(self, screen=None, delay=0.2, render_cycle=1):
+    def walk(self, screen=None, delay=0.2, render_cycle=10):
         visited = {}
         paths = [(self.starting_pos, 0),]
         tick = 0
@@ -109,7 +112,7 @@ class Maze:
                 pos, distance = path
                 if pos not in visited or visited[pos] > distance:
                     visited[pos] = distance
-                    self.colors.setdefault(pos, (0, 255, 255))
+                    self.colors[pos] = self.loop_color
                     directions = self.directions(pos)
                     x, y = pos
                     if directions & N:                                new_paths.append(((x, y - 1), distance + 1))
@@ -123,5 +126,47 @@ class Maze:
                     time.sleep(delay)
             paths = new_paths
         return max(visited.values())
+
+    def clear_colors(self):
+        self.colors.clear()
+        self.colors[self.starting_pos] = (0, 255, 0)
+
+    def find_enclosed(self, screen=None, delay=0.2, render_cycle=10):
+        # call "self.walk" before calling this: loop parts
+        # will be marked with "loop_color"
+        ticks = 0
+        closed_tiles = 0
+        for y in range(0, self.height):
+            crossed_walls = 0
+            inside_wall = 0
+            wall_start_direction = None
+            for x in range(0, self.width):
+                if self.colors.get((x, y), None) == self.loop_color:
+                    d = self.directions((x, y))
+                    if d & N and d & S: # Vertical wall
+                        inside_wall ^= 1
+                    elif d & E and d & W: # horizontal wall - status doesnot change
+                        pass
+                    elif d & S and d & E: # incomming south corner
+                        wall_start_direction = S
+                    elif d & N and d & E: # incomming north corner
+                        wall_start_direction = N
+                    elif d & S and d & W:
+                        # if we came from south and are returning to south, no change
+                        inside_wall ^= wall_start_direction == N
+                        wall_start_direction = None
+                    elif d & N and d & W:
+                        inside_wall ^= wall_start_direction == S
+                        wall_start_direction = None
+
+                elif inside_wall:
+                    self.colors[x, y] = self.enclosed_color
+                    closed_tiles += 1
+                ticks += 1
+                if screen and not ticks % render_cycle:
+                    self.render(screen)
+                    time.sleep(delay)
+        return closed_tiles
+
 
 

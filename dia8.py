@@ -32,6 +32,7 @@ class Walker:
         self.graph = graph
         self.directions_str = directions
         self.start_node = start_node
+        self.num_cycles = 1
         self.reset()
     def reset(self):
         self.node = self.start_node
@@ -41,13 +42,18 @@ class Walker:
         self.started_directions = set()
         self.end_nodes = set()
         self.cycle_nodes = set()
+        self.total_cycles = 0
     def __iter__(self):
         self.reset()
         for direction in self.directions:
             if self.steps and direction[0] == 0:
                 if self.node in self.cycle_nodes:
                     self.cycle_size = self.steps
-                    break
+                    self.total_cycles += 1
+                    if self.total_cycles >= self.num_cycles:
+                        break
+                    else:
+                        self.cycle_nodes.clear()
                 self.cycle_nodes.add(self.node)
             self.steps += 1
             self.node = self.graph[self.node][direction[1] == "R"]
