@@ -29,6 +29,7 @@ class Maze:
         self.width = len(self.data[0])
         self.height = len(self.data)
         self.colors = {}
+        self.saving_frames = False
         self.find_start_pos()
 
     def __repr__(self):
@@ -77,10 +78,15 @@ class Maze:
                 return
         raise ValueError("No starting position")
 
+    def start_animation(self):
+        self.saving_frames = True
+        self.frame_template = "animations/day_10_{:04d}.png"
+        self.frame_number = 0
+
     def render(self, screen: "pygame.Surface", bgcolor=(0,0,0), color=(255,255,255)):
         pw, ph = screen.get_size()
-        xstep = pw // (self.width + 1)
-        ystep = ph // (self.height + 1)
+        xstep = pw / (self.width + 1)
+        ystep = ph / (self.height + 1)
         screen.fill(bgcolor)
         linew = max(int(xstep / 10), 1)
         # pos, x, y are nonlocal in "dl":
@@ -88,7 +94,7 @@ class Maze:
         dl = lambda ep: pygame.draw.line(
             screen,
             self.colors.get(pos, color),
-            ((x + 1) * xstep, (y + 1) * ystep),
+            (int((x + 1) * xstep), int((y + 1) * ystep)),
             (int((x + ep[0] * F + 1) * xstep), int((y + ep[1] * F + 1) * ystep)),
             width=linew
         )
@@ -101,6 +107,9 @@ class Maze:
             if directions & S: dl((0, 1))
             if directions & W: dl((-1, 0))
         pygame.display.update()
+        if self.saving_frames:
+            pygame.image.save(screen, self.frame_template.format(self.frame_number))
+            self.frame_number += 1
 
     def walk(self, screen=None, delay=0.2, render_cycle=10):
         visited = {}

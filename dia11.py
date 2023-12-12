@@ -33,7 +33,7 @@ class Mapa:
 
     def __iter__(self):
         for y in range(self.height):
-            for  x in range(self.width):
+            for x in range(self.width):
                 if self[x,y] == GALAXY:
                     yield(x,y)
 
@@ -41,21 +41,18 @@ class Mapa:
         x, y = pos
         return self.data[y][x]
 
-    def _expand_horizontal(self):
-        rows_to_dup = []
-        for i, row in enumerate(self.data):
-            if all(item == SPACE for item in row):
-                rows_to_dup.append(i)
-        for index in reversed(rows_to_dup):
-            self.data.insert(index + 1, self.data[index][:])
-
-    def _expand_vertical(self):
-        cols_to_dup = []
-        for col in range(self.width):
-            if all(self[col, row] == SPACE for row in range(self.height)):
-                cols_to_dup.append(col)
-        for index in reversed(cols_to_dup):
-            self._dup_col(index)
+    def _expand_lines(self, direction="horizontal"):
+        lines_to_dup = []
+        outter_limit = self.width if direction == "vertical" else self.height
+        inner_limit = self.height if direction == "vertical" else self.width
+        for i in range(outter_limit):
+            if all(self[(i, j) if direction=="vertical" else (j, i)] == SPACE for j in range(inner_limit)):
+                lines_to_dup.append(i)
+        for index in reversed(lines_to_dup):
+            if direction == "vertical":
+                self._dup_col(index)
+            else:
+                self.data.insert(index + 1, self.data[index][:])
 
     def _dup_col(self, index):
         for i, row in enumerate(self.data):
@@ -63,8 +60,8 @@ class Mapa:
             self.data[i] = row[:index] + row[index] + row[index:]
 
     def expand(self):
-        self._expand_horizontal()
-        self._expand_vertical()
+        self._expand_lines("horizontal")
+        self._expand_lines("vertical")
     def __repr__(self):
         return "\n".join(self.data)
 
