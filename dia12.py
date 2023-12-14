@@ -1,5 +1,6 @@
 import re
 from functools import cache
+from collections import namedtuple
 
 import pytest
 
@@ -39,8 +40,10 @@ def parse_line(line):
         #return False, cursor
     #return not next(groups_iter, 0), cursor
 
+#check_partial = namedtuple("check_partial", "works index next_groups force_dot")
+
 @cache
-def check_partial_line(body: str, groups: tuple) -> (int, tuple):
+def check_partial_line(body: str, groups: tuple) -> (bool, int, tuple, bool):
     # Verify if a line is valid for the given groups
     # up to the point the first "?" is met.
     # returns the index where checking failed,
@@ -68,28 +71,30 @@ def check_partial_line(body: str, groups: tuple) -> (int, tuple):
                 continue
             if group_size != group_count:
                 # invalid match
-                return last_good_index, (group_size, *iter_groups)
+                return False, last_good_index, (group_size, *iter_groups), False
             last_good_index = i
             inside_group = False
             group_size = next(iter_groups, None)
         else: # char == "?"
             if inside_group:
                 if group_size == group_count:
-                    return i, tuple(iter_groups)
-                return last_good_index, (group_size, *iter_groups)
-            return i, (group_size, *iter_groups)
+                    # The 3rdy parameter as "True" means the current "?" is to be forced to "." when carrying on.
+                    return None, i, tuple(iter_groups), True
+                return False, last_good_index, (group_size, *iter_groups), False
+            return None, i, (group_size, *iter_groups), False
 
 
     if group_size is None and "#" in body[i:]:
-        raise RuntimeError()
+        return False, last_good_index, (group_size, *iter_groups), False
     elif inside_group:
         if group_size == group_count:
-            return i + 1, tuple(iter_groups)
-        return last_good_index, (group_size, *iter_groups)
-    return i + 1, tuple(iter_groups)
+            return True, i + 1, tuple(iter_groups), True
+        return False, last_good_index, (group_size, *iter_groups), False
+    return True, i + 1, tuple(iter_groups), False
 
 def check_line(body, groups):
-    return (r:=check_partial_line(body, groups))[0] == len(body) and not r[1]
+    r = check_partial_line(body, groups)
+    return r[0]
 
 def part2tize_line(line, groups, collate=5):
     line = "?".join([line,] * collate)
@@ -124,18 +129,27 @@ def part2tize_line(line, groups, collate=5):
 
 @cache
 def process_line(body, groups: tuple):
-    print(body)
+    print(body, groups)
     results = 0
     if len(body) == 0 or "?" not in body:
         return int( check_line(body, groups))
-    index, next_groups = check_partial_line(body, groups)
-    if index == len(body) and not len(next_groups):
-        return 1
-    next_wild = body.find("?")
+    valid, index, next_groups, force_dot = check_partial_line(body, groups)
+    match valid:
+        case True:
+            return 1
+        case False:
+            return 0
+        case None:
+            pass
+        case _:
+            raise RuntimeError()
+    next_body = body[index:]
+    next_wild = next_body.find("?")
     if next_wild == -1:
         return 1
-    results = process_line(body[:next_wild] + "." + body[next_wild + 1:], next_groups)
-    results += process_line(body[:next_wild] + "#" + body[next_wild + 1:], next_groups)
+    results = process_line(next_body[:next_wild] + "." + next_body[next_wild + 1:], next_groups)
+    if not force_dot:
+        results += process_line(next_body[:next_wild] + "#" + next_body[next_wild + 1:], next_groups)
     return results
 
 
