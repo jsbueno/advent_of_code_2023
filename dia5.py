@@ -44,8 +44,7 @@ class Range:
 class Table:
     table_index = {}
     def __init__(self, text_table):
-        header, body = text_table.split("\n", 1)
-        lines = body.split("\n")
+        header, *lines = text_table.split("\n")
         self.load_lines(lines)
         self.name = header.split()[0]
         self.source, _, self.destination = self.name.split("-")
