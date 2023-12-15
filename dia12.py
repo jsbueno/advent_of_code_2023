@@ -4,7 +4,7 @@ from collections import namedtuple
 
 import pytest
 
-cache = lambda x:x
+# cache = lambda x:x
 
 def parse_line(line):
     body, groups = line.split(" ")
@@ -71,7 +71,7 @@ def check_partial_line(body: str, groups: tuple) -> (bool, int, tuple, bool):
                 continue
             if group_size != group_count:
                 # invalid match
-                return False, last_good_index, (group_size, *iter_groups), False
+                return False, last_good_index, (group_size, *iter_groups), None
             last_good_index = i
             inside_group = False
             group_size = next(iter_groups, None)
@@ -79,18 +79,29 @@ def check_partial_line(body: str, groups: tuple) -> (bool, int, tuple, bool):
             if inside_group:
                 if group_size == group_count:
                     # The 3rdy parameter as "True" means the current "?" is to be forced to "." when carrying on.
-                    return None, i, tuple(iter_groups), True
-                return False, last_good_index, (group_size, *iter_groups), False
-            return None, i, (group_size, *iter_groups), False
+                    return None, i, tuple(iter_groups), "force_dot"
+                elif group_size < group_count:
+                    return False, last_good_index, (group_size, *iter_groups), None
+                else: #elif group_size > group_count:
+                    return None, last_good_index, (group_size, *iter_groups), "force_hash"
+            return None, i, (group_size, *iter_groups), None
 
 
-    if group_size is None and "#" in body[i:]:
-        return False, last_good_index, (group_size, *iter_groups), False
+    if (
+        group_size is None and "#" in body[i:] or
+        group_size and "#" not in body[i:]
+    ):
+        return False, last_good_index, (group_size, *iter_groups), None
     elif inside_group:
         if group_size == group_count:
-            return True, i + 1, tuple(iter_groups), True
-        return False, last_good_index, (group_size, *iter_groups), False
-    return True, i + 1, tuple(iter_groups), False
+            remaining = tuple(iter_groups)
+            if not remaining:
+                return True, i + 1, tuple(iter_groups), None
+            else:
+                return False, i + 1, tuple(iter_groups), None
+        return False, last_good_index, (group_size, *iter_groups), None
+    remaining = tuple(iter_groups)
+    return not remaining, i + 1, remaining, None
 
 def check_line(body, groups):
     r = check_partial_line(body, groups)
@@ -129,11 +140,11 @@ def part2tize_line(line, groups, collate=5):
 
 @cache
 def process_line(body, groups: tuple):
-    print(body, groups)
+    # print(body, groups)
     results = 0
     if len(body) == 0 or "?" not in body:
         return int( check_line(body, groups))
-    valid, index, next_groups, force_dot = check_partial_line(body, groups)
+    valid, index, next_groups, force_next = check_partial_line(body, groups)
     match valid:
         case True:
             return 1
@@ -147,24 +158,28 @@ def process_line(body, groups: tuple):
     next_wild = next_body.find("?")
     if next_wild == -1:
         return 1
-    results = process_line(next_body[:next_wild] + "." + next_body[next_wild + 1:], next_groups)
-    if not force_dot:
+    if force_next in (None, "force_dot"):
+        results = process_line(next_body[:next_wild] + "." + next_body[next_wild + 1:], next_groups)
+    else:
+        results = 0
+
+    if force_next in (None, "force_hash"):
         results += process_line(next_body[:next_wild] + "#" + next_body[next_wild + 1:], next_groups)
     return results
 
 
 
 
-def process_all(data, collate=1):
+def process_all(data, collate=1, interval=25):
     lines = [parse_line(line) for line in data.split("\n")]
     if collate > 1:
         lines = [part2tize_line(*line, collate=collate) for line in lines]
     result = 0
     for i, line in enumerate(lines):
-        result += (possibilities:=process_line(*line)[0])
+        result += (possibilities:=process_line(*line))
         # print (line, possibilities)
-        if i % 1 == 0:
-            print(f"at line {i}")
+        if i % interval == 0:
+            print(f"at line {i}: {possibilities}")
     return result
 
 
