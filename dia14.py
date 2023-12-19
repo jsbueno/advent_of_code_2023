@@ -1,6 +1,27 @@
 from collections import deque
 
+from itertools import chain
+
+
 consume = lambda x: deque(x, maxlen=0)
+
+
+class Indexable:
+    def __init__(self, func):
+        self.func = func
+    def __repr__(self):
+        return "Instancia de Indexable"
+
+    def __get__(self, instance, owner=None):
+        indexable = copy(self)
+        indexable.instance = instance
+        return indexable
+
+    def __getitem__(self, index):
+        return self.func(self.instance, index)
+
+    def __setitem__(self, index, value):
+        return self.func(self.instance, index, value)
 
 class V2(tuple):
     def __new__(cls, x, y = None):
@@ -140,6 +161,56 @@ class Map:
                 print(i)
         return current
 
+    def _rectify(self, x, y):
+        # assumes square grid
+        if self.gravity in (EAST, SOUTH):
+            pos = self.width - 1 - x, y
+        else:
+            pos = x, y
+        if self.gravity in (NORTH, SOUTH):
+            pos = pos[1], pos[0]
+        return pos
+
+    def get_line(self, index):
+        # gets current line
+        # in the aprpopriate direction
+        # for "falling", according to self.gravity
+
+        # assumes a square grid
+        return "".join(self[self._rectify(i, index)] for i in range(self.width))
+
+    def set_line(self, index, values):
+        for i, value in zip(range(self.width), values):
+            self[self._rectify(i, index)] = value
+
+    def solve_line(self, line):
+        result = ""
+        empty_counter = 0
+        ground_index = 0
+        chunk_counter = 0
+        END = "$"
+        for i, item in enumerate(chain(line,END)):
+            if item in (COLUMN, END):
+                result += BOULDER * chunk_counter
+                result += SPACE * empty_counter
+                #ground_index = i - 1
+            if item == BOULDER:
+                chunk_counter += 1
+            elif item == COLUMN:
+                chunk_counter = 0
+                empty_counter = 0
+                #result += SPACE * (i - 1 - ground_index)
+                result += "#"
+                #ground_index = i
+            elif item == SPACE:
+                empty_counter += 1
+        return result
+
+    def solve(self, result=True):
+        for i in range(self.width):
+            self.set_line(i, self.solve_line(self.get_line(i)))
+        if result:
+            return self.eval()
 
     def __hash__(self):
         return hash(repr(self))
