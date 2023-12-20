@@ -1,27 +1,11 @@
 from collections import deque
 
 from itertools import chain
-
+from functools import cache
 
 consume = lambda x: deque(x, maxlen=0)
 
 
-class Indexable:
-    def __init__(self, func):
-        self.func = func
-    def __repr__(self):
-        return "Instancia de Indexable"
-
-    def __get__(self, instance, owner=None):
-        indexable = copy(self)
-        indexable.instance = instance
-        return indexable
-
-    def __getitem__(self, index):
-        return self.func(self.instance, index)
-
-    def __setitem__(self, index, value):
-        return self.func(self.instance, index, value)
 
 class V2(tuple):
     def __new__(cls, x, y = None):
@@ -140,22 +124,33 @@ class Map:
     def cycle(self):
         for gravity in NORTH, WEST, SOUTH, EAST:
             self.gravity = gravity
-            consume(self)
+            self.solve(False)
+            #consume(self)
         return self.eval()
 
-    def part2_iter(self):
+    def part2_iter(self, num_cycles = 1_000_000_000):
         current = hash(self)
         i = 0
-        all_states = set()
+        all_states = {}
+        states_by_cycle = {}
         while True:
             self.cycle()
             new_state = hash(self)
             if new_state == current:
                 break
             current = new_state
+            states_by_cycle[i] = self.eval()
             if current in all_states:
-                raise RuntimeError(f"Repeated non consecutive state: {current}")
-            all_states.add(current)
+                all_states[current].append((i, self.eval()))
+                if len(all_states[current]) == 3:
+                    offset = all_states[current][0][0]
+                    cycle_size = (i - offset) / 2
+                    result_index = offset + (num_cycles - 1 - offset) % cycle_size
+                    return states_by_cycle[result_index]
+
+                    #return i, self.eval(), all_states
+            else:
+                all_states[current] = [(i, self.eval())]
             i += 1
             if i %10 == 0:
                 print(i)
@@ -183,6 +178,7 @@ class Map:
         for i, value in zip(range(self.width), values):
             self[self._rectify(i, index)] = value
 
+    @cache
     def solve_line(self, line):
         result = ""
         empty_counter = 0
