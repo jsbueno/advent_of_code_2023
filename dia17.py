@@ -24,6 +24,9 @@ class V2(tuple):
     def __hash__(self):
         return hash(tuple(self))
 
+    def __neg__(self):
+        return type(self)(-self.x, -self.y)
+
     def __repr__(self):
         return f"{self.__class__.__name__}({self.x}, {self.y})"
 
@@ -122,7 +125,8 @@ class Walker:
         new_walkers = []
         if self.sleep:
             self.sleep -= 1
-            self.slept = True
+            if self.sleep == 0:
+                self.slept = True
             return [self]
         #if  self.map.weights[self.pos].walker_id != self.id:
             #return ()
@@ -133,18 +137,20 @@ class Walker:
             directions = [self.restrict]
         else:
             if (xy:=self.direction) != V2(0,0):
-                directions = DIRECTIONS[(xx:=DIRECTIONS.index(xy)):] + DIRECTIONS[:xx]
+                directions = list(DIRECTIONS[(xx:=DIRECTIONS.index(xy)):] + DIRECTIONS[:xx])
             else:
-                directions = DIRECTIONS
+                directions = list(DIRECTIONS)
+        if (xy:=-self.direction) in  directions:
+            directions.remove(xy)
         for direction in directions:
             whereto = prev_pos + direction
-            if not self.map.inrange(whereto) or whereto in history[-3:]:
+            if not self.map.inrange(whereto):# or whereto in history[-3:]:
                 continue
             if self.check_straight(self.map.threshold, history, whereto):
-                if not getattr(self, "slept", None):
-                    self.slept = False
-                    self.sleep = 20
-                    return [self]
+                #if not getattr(self, "slept", None):
+                    #self.slept = False
+                    #self.sleep = 20
+                    #return [self]
                 continue
             #if len(self.history) >=2 and whereto == self.history[-2]:
                 #continue
@@ -208,15 +214,23 @@ class Map:
             self.walkers = new_walkers
         return self.result
 
-    def print(self):
+    def print(self, done=False):
         print("\x1b[H\x1b[0J", end="")
+        done_path = set()
+        if done:
+            pos = V2(self.width - 1, self.height - 1)
+            done_path.add(pos)
+            while pos != V2(0,0):
+                pos = self.weights[pos].previous_pos
+                done_path.add(pos)
         for y in range(self.height):
             for x in range(self.width):
-                if info:=self.weights.get(V2(x,y)):
-                    print(f"\x1b[{info.color}m", end="")
+                pos = V2(x,y)
+                if info:=self.weights.get(pos):
+                    print(f"\x1b[{info.color if pos not in done_path else 47}m", end="")
                 else:
                     color = None
-                what = self[x, y] if not (info:=self.weights.get(V2(x,y), None)) else dirmap[info.last_direction] if not info.dead_at_beach else "#"
+                what = self[pos] if not (info:=self.weights.get(pos, None)) else dirmap[info.last_direction] if not info.dead_at_beach else "#" if pos not in done_path else "*"
                 print(what, end="")
                 if info:
                     print("\x1b[49m", end="")
