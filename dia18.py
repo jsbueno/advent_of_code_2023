@@ -62,9 +62,11 @@ class Map:
         cursor = V2(0, 0)
         grid[cursor] = "#ffffff"
         count = 1
+        all_directions = []
         for line in instructions.split("\n"):
             direction, length, color = line.split()
             direction = DIRECTIONS[direction]
+            all_directions.append(direction)
             color = color.strip("()")
             for i in range(int(length)):
                 cursor += direction
@@ -83,6 +85,7 @@ class Map:
         self.topleft = V2(l_left, l_up)
         self.bottonright = V2(l_right, l_down) + V2(1,1)
         self.trenchlength = count
+        self.all_directions = all_directions
 
     @property
     def width(self):
@@ -95,6 +98,39 @@ class Map:
     def __getitem__(self, index):
         index += self.topleft
         return "#" if self.grid.get(index, None) else "."
+
+    def __setitem__(self, index, value):
+        index += self.topleft
+        self.grid[index] = value
+
+    def find_start(self):
+        point = - self.topleft
+        # WARNING: will not be correct for corner cases
+        # (like a double wall comming back to the startin point)
+        point += self.all_directions[0] + self.all_directions[1]
+        return point
+
+    @property
+    def size(self):
+        return len(self.grid)
+
+    def fill(self, start: "V2"=None, color="#FFFFFF"):
+        if start is None:
+            start = self.find_start()
+        walkers = [start]
+        self[start] = color
+        width = self.width; height = self.height
+        while walkers:
+            next_walkers = []
+            for walker in walkers:
+                for direction in DIRECTIONS.values():
+                    next = walker + direction
+                    if not 0 <= next.x < width or not 0 <= next.y <=height:
+                        continue
+                    if self[next]==".":
+                        next_walkers.append(next)
+                        self[next] = color
+            walkers = next_walkers
 
 
     def __repr__(self):
