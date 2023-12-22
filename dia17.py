@@ -1,6 +1,8 @@
 import random
 from dataclasses import dataclass
 
+class GoalReached(Exception): pass
+
 class V2(tuple):
     def __new__(cls, x, y = None):
         if y != None:
@@ -30,6 +32,8 @@ class V2(tuple):
     def __repr__(self):
         return f"{self.__class__.__name__}({self.x}, {self.y})"
 
+    def manhattan(self, other):
+        return abs(self[0] - other[0]) + abs(self[1] - other[1])
 
 
 NORTH = V2(0, -1)
@@ -121,7 +125,7 @@ class Walker:
             return V2(0,0)
         return self.history[-1] - self.history[-2]
 
-    def step(self):
+    def step_dikstra(self, all_walkers):
         new_walkers = []
         if self.sleep:
             self.sleep -= 1
@@ -163,7 +167,52 @@ class Walker:
             elif dest.weight <= weight and dest.dead_at_beach and direction != dest.last_direction:
                 new_walker = self.walk_or_fork(new_walkers, whereto, history, weight)
                 new_walker.restrict = dest.last_direction
-        return new_walkers
+        all_walkers.extend(new_walkers)
+        return all_walkers
+
+    def step_a_star(self, all_walkers):
+        self.map.set_weight(self)
+        new_walkers = []
+        if self.pos == self.map.goal:
+            raise GoalReached()
+        for direction in DIRECTIONS:
+            if direction == -self.direction:
+                continue
+            whereto = self.pos + direction
+            if not self.map.inrange(whereto):
+                continue
+            if self.check_straight(self.map.threshold, self.history, whereto):
+                continue
+            weight = self.weight + self.map[whereto]
+            f_weight = self.f(self, weight, whereto)
+            for other_walker in all_walkers[:]:
+                if other_walker.pos == whereto:
+                    if other_walker.f_weight < f_weight:
+                        continue
+                    else:
+                        all_walkers.remove(other_walker)
+
+            if not (info:=self.map.weights.get(whereto, None)) or info.weight >= weight:
+                new_walker = self.clone(whereto, self.history, weight)
+                new_walker.f_weight = f_weight
+                new_walkers.append(new_walker)
+        all_walkers.extend(new_walkers)
+        if self is self.map.walkers[-1]:
+            all_walkers.sort(key=self.f, reverse=True)
+        return all_walkers
+
+    def f(self, walker, weight=None, pos=None):
+        h = weight or walker.weight
+        return h + self.g(walker, pos)
+
+    def g(self, walker, pos):
+        if pos:
+            pos = walker.pos + pos
+        else:
+            pos = walker.pos
+        return 1 * pos.manhattan(self.map.goal)
+
+    step = step_a_star
 
 
     def __str__(self):
@@ -172,15 +221,16 @@ class Walker:
         return f"Walker {self.id}"
 
 class Map:
-    threshold = 3
 
-    def __init__(self, data:str):
+    def __init__(self, data:str, threshold=4):
+        self.threshold = threshold
         self.load(data)
         self.reset()
 
     def reset(self):
         self.walkers: list[Walker] = []
         self.weights: dict[V2, WeightState] = {}
+        self.goal = V2(self.width - 1, self.height - 1)
 
     def load(self, data):
         self.data = [[int(num) for num in line] for line in data.split("\n")]
@@ -208,8 +258,12 @@ class Map:
         yield
         while  self.walkers:
             new_walkers = []
+            #self.walkers = self.walkers[:3]
             for walker in self.walkers:
-                new_walkers.extend(walker.step())
+                try:
+                    walker.step(new_walkers)
+                except GoalReached:
+                    break
             yield
             self.walkers = new_walkers
         return self.result
@@ -235,6 +289,7 @@ class Map:
                 if info:
                     print("\x1b[49m", end="")
             print()
+        print(f"\nWalkers: {len(self.walkers)}")
 
     def doit(self, print=True):
         w = self.walk()
