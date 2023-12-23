@@ -103,12 +103,20 @@ class Map:
         index += self.topleft
         self.grid[index] = value
 
-    def find_start(self):
+    def naive_find_start(self):
         point = - self.topleft
         # WARNING: will not be correct for corner cases
-        # (like a double wall comming back to the startin point)
+        # (lika double wall comming back to the startin point)
+        # (it actually did not work for the real input)
         point += self.all_directions[0] + self.all_directions[1]
         return point
+
+    def find_start(self):
+        middle = self.height // 2
+        for x in range(0, self.width):
+            if self[x, middle] != "." and self[x+1, middle] == ".":
+                return V2(x + 1, middle)
+        raise ValueError("could not find starting point")
 
     @property
     def size(self):
