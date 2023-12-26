@@ -52,6 +52,7 @@ def sgn(num):  # this is missing from Python built-ins
     return 1 if num > 0 else -1 if num != 0 else 0
 
 class Block:
+
     def __init__(self, well, line, nick=""):
         self.well = well
         self.nick = nick
@@ -61,6 +62,7 @@ class Block:
         self.orientation = X if self.shape.x else Y if self.shape.y else Z
         self.length = 1 + self.shape[0 if self.shape.x else 1 if self.shape.y else 2]
         self.supporting = set()
+        self.supported_by = set()
         self.add_to()
 
     def __iter__(self):
@@ -95,17 +97,31 @@ class Block:
         self.remove_from()
 
     def __repr__(self):
-        return f"Block {self.shape} at {self.offset}" if not self.nick else self.nick
+        return f"Block {self.nick}, {self.shape} at {self.offset}, supported by {','.join(bl.nick for bl in self.supported_by) or 'None'}, supporting {','.join(bl.nick for bl in self.supporting) or 'None'}"
+
+
+def nick_gen():
+    i = 0
+    while True:
+        j = i
+        k = ""
+        while j:
+            k += chr(j % 26 + 65)
+            j //= 26
+        i += 1
+        yield k[::-1] if k else "A"
+
 
 class Well:
     def __init__(self, data):
+        self._nicks = nick_gen()
         self.voxels = dict()
         self.blocks = list()
         self.load(data)
 
     def load(self, data):
         for line in data.split("\n"):
-            self.blocks.append(Block(self, line))
+            self.blocks.append(Block(self, line, nick=next(self._nicks)))
 
     def __getitem__(self, pos):
         return self.voxels.get(pos)
@@ -134,8 +150,13 @@ class Well:
 
     def doit(self):
         self.process_fall()
-        desintegrable = {block for block in self.blocks for supported in block.supporting if len(supported.supported_by) > 1}
-        desintegrable.update(block for block in self.blocks if not block.supporting)
+        desintegrable = set()
+        for block in self.blocks:
+            if not block.supporting:
+                desintegrable.add(block)
+                continue
+            if all(len(supported.supported_by) > 1 for supported in block.supporting):
+                desintegrable.add(block)
         return desintegrable
 
     def __repr__(self):
