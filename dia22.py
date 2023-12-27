@@ -1,4 +1,4 @@
-from functools import cache
+from functools import wraps
 
 class V3(tuple):
     def __new__(cls, x, y=None, z=None):
@@ -114,6 +114,22 @@ def nick_gen():
         yield k[::-1] if k else "A"
 
 
+def special_cache(func):
+
+    @wraps(func)
+    def wrapper(self, block, other_falling=frozenset()):
+        cache = self.cache
+        # The key to avoid parametric explosive recursion: filter out "other_falling"
+        # to just the current well level and above, before checking the cache key.
+        filtered_key = frozenset(bl for bl in other_falling if (bl.offset - block.offset).z > -4)
+        if (key:=(block, filtered_key)) in cache:
+            return cache[key]
+        result = func(self, block, filtered_key)
+        cache[key] = result
+        return result
+    return wrapper
+
+
 class Well:
     def __init__(self, data):
         self._nicks = nick_gen()
@@ -161,23 +177,25 @@ class Well:
                 desintegrable.add(block)
         return desintegrable
 
-    @cache
-    # wait for it - we must cache only "block" not fallable -
 
-    def account_for_fallables(self, block, fallable):
-        ...
+    @special_cache
+    def whichwouldfall(self, block, other_falling=frozenset()):
+        supported = block.supporting
+        falling_siblings: frozenset = other_falling | {block,}
+        new_falling = {bl for bl in supported if not (bl.supported_by - falling_siblings)}
+        for new_block in new_falling.copy():
+            new_falling |= self.whichwouldfall(new_block, falling_siblings | new_falling)
 
-        return frozenset(new_fallable)
+        return new_falling |falling_siblings
 
     def doit_part2(self):
         self.process_fall()
+        self.cache = dict()
         total = 0
         for block in reversed(self.blocks):
-            fallable = frozenset({block,})
-            for supported in block.supporting:
-                fallable = self.account_for_fallables(supported, fallable)
+            fallable = self.whichwouldfall(block)
 
-            total += len(fallable) - 1 # the -1 accounts for the desintegrated block
+            total += len(fallable) - 1
         return total
 
     def __repr__(self):
