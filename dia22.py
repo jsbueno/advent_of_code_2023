@@ -1,3 +1,5 @@
+from functools import cache
+
 class V3(tuple):
     def __new__(cls, x, y=None, z=None):
         if isinstance(x, str):
@@ -158,6 +160,25 @@ class Well:
             if all(len(supported.supported_by) > 1 for supported in block.supporting):
                 desintegrable.add(block)
         return desintegrable
+
+    @cache
+    # wait for it - we must cache only "block" not fallable -
+
+    def account_for_fallables(self, block, fallable):
+        ...
+
+        return frozenset(new_fallable)
+
+    def doit_part2(self):
+        self.process_fall()
+        total = 0
+        for block in reversed(self.blocks):
+            fallable = frozenset({block,})
+            for supported in block.supporting:
+                fallable = self.account_for_fallables(supported, fallable)
+
+            total += len(fallable) - 1 # the -1 accounts for the desintegrated block
+        return total
 
     def __repr__(self):
         return f"Well <{self.voxels}>"
