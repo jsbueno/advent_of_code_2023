@@ -280,6 +280,7 @@ class Map:
 
         self.generation = 0
         self.current_gen = []
+        self.current_ids = {}
 
     def load(self, data):
         lines = data.split("\n")
@@ -350,41 +351,52 @@ class Map:
     def __repr__(self):
         return "\n".join("".join(str(w) for w in line) for line in self.data)
 
-    def mark(self, pos, weight, history):
-        self[pos].weight = weight
-        self[pos].history = history
+    def mark(self, pos, last_pos, weight, history):
+        if (self[pos].weight or 0) < (weight or 0):
+            self[pos].weight = weight
+            self[pos].history = history
         #self[pos].last_pos = last_pos
         for direction in DIRECTIONS.values():
             target = pos + direction
             if not self.inrange(target) or (nc:=self[target]).is_wall:
                 continue
-            if nc.history and target in nc.history:
+            #if target == last_pos:
+                #continue
+            if target in history:
                 continue
-            self.current_gen.append((target, nc, history))
+            self.current_gen.append((target, nc, pos, history))
 
     def advance_generation(self):
         self.next_gen = self.current_gen
         self.current_gen = []
 
 
-    def lifegridsolver(self, print=True):
+    def lifegridsolver(self, print_=True):
         self.reset()
         self.generation = 0
         weight = 0
-        self.mark(self.starting_pos, weight, History(self.starting_pos))
+        self.mark(self.starting_pos, None, weight, History(self.starting_pos))
         changed = True
+        i = 0
         while changed:
             changed = False
             self.advance_generation()
             next_weight = weight + 1
-            if next_weight == 55:
-                breakpoint()
-            for pos, cell, history in self.next_gen:
-                if cell.weight is None or cell.weight < next_weight:
+            #if next_weight == 55:
+                #breakpoint()
+            target_weights = {}
+            for pos, cell, last_pos, history in self.next_gen:
+                if pos not in target_weights:
+                    # this mini caching allows to pathes to cross-over.
+                    target_weights[pos] = cell.weight or 0
+                if cell.weight is None or target_weights[pos] < next_weight:
                     changed = True
-                    self.mark(pos, next_weight, history + pos)
-            if print:
+                    self.mark(pos, last_pos, next_weight,  history + pos)
+            i += 1
+            if print_:
                 self.print()
                 time.sleep(0.1)
+            elif not i%100:
+                print ("\r", i, len(self.current_gen), end="   ", flush=True)
             weight = next_weight
         return self.result
