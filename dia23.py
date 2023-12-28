@@ -1,6 +1,7 @@
 import random
 from functools import cache
 from collections import deque
+import time
 
 from copy import copy
 
@@ -156,7 +157,6 @@ class Walker:
             if self.check_weight(cell, weight, orig_pos):
                 extra = {"history": orig_history + target} if hasattr(self, "history") else {}
                 if hasattr(cell, "walker") and cell.walker_last_pos == orig_pos and cell.weight and cell.weight < weight and cell.walker.alive:
-                    breakpoint()
                     cell.walker.kill()
                 if len(new_walkers) or orig_history is None:
                     new_walker = type(self)(self.map, target, last_pos=orig_pos, weight=weight, **extra)
@@ -254,11 +254,16 @@ class Cell:
         self.char = char
         self.direction = DIRECTIONS.get(char, None)
         self.is_wall = char == "#"
+        self.history = None
 
         self.weight: "Optional[int]" = None
 
     def __repr__(self):
         return self.char
+
+
+
+
 
 
 class Map:
@@ -272,6 +277,9 @@ class Map:
         for y in range(self.height):
             for x in range(self.width):
                 self[x,y].weight = None
+
+        self.generation = 0
+        self.current_gen = []
 
     def load(self, data):
         lines = data.split("\n")
@@ -296,15 +304,16 @@ class Map:
         self.data[pos[1]][pos[0]] = Cell(val)
 
     def print(self):
+        print("\x1b[H")
         for y in range(self.height):
             line = ""
             for x in range(self.width):
                 if self[x, y].is_wall:
-                    line += "####"
+                    line += "#####"
                 elif self[x,y].weight is None:
-                    line += "    "
+                    line += "     "
                 else:
-                    line += f"{self[x,y].weight:^4d}"
+                    line += f"{self[x,y].weight:^5d}"
             print(line)
 
     def walk(self, walker_class=Walker):
@@ -340,3 +349,42 @@ class Map:
 
     def __repr__(self):
         return "\n".join("".join(str(w) for w in line) for line in self.data)
+
+    def mark(self, pos, weight, history):
+        self[pos].weight = weight
+        self[pos].history = history
+        #self[pos].last_pos = last_pos
+        for direction in DIRECTIONS.values():
+            target = pos + direction
+            if not self.inrange(target) or (nc:=self[target]).is_wall:
+                continue
+            if nc.history and target in nc.history:
+                continue
+            self.current_gen.append((target, nc, history))
+
+    def advance_generation(self):
+        self.next_gen = self.current_gen
+        self.current_gen = []
+
+
+    def lifegridsolver(self, print=True):
+        self.reset()
+        self.generation = 0
+        weight = 0
+        self.mark(self.starting_pos, weight, History(self.starting_pos))
+        changed = True
+        while changed:
+            changed = False
+            self.advance_generation()
+            next_weight = weight + 1
+            if next_weight == 55:
+                breakpoint()
+            for pos, cell, history in self.next_gen:
+                if cell.weight is None or cell.weight < next_weight:
+                    changed = True
+                    self.mark(pos, next_weight, history + pos)
+            if print:
+                self.print()
+                time.sleep(0.1)
+            weight = next_weight
+        return self.result
