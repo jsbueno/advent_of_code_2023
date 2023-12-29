@@ -111,6 +111,31 @@ class History:
     def __repr__(self):
         return repr(list(self))
 
+
+class SimpleWalker:
+    def __init__(self, map, pos, last_pos=None, weight=0):
+        self.pos = pos
+        self.map = map
+        self.last_pos = last_pos
+        self.weight = weight
+
+    def step(self):
+        orig_pos = self.pos
+        walkers = set()
+        for direction in DIRECTIONS.values():
+            target = orig_pos + direction
+            if target == self.last_pos: continue
+            if not self.map.inrange(target): continue
+            if (cell:=self.map[target]).is_wall: continue
+            next_weight = self.weight + 1
+            if cell.weight is None or cell.weight > next_weight:
+                new_walker = type(self)(self.map, target, self.pos, next_weight)
+                cell.weight = next_weight
+                walkers.add(new_walker)
+        return walkers
+
+
+
 class Walker:
     id = 0
 
@@ -314,7 +339,8 @@ class Map:
                 elif self[x,y].weight is None:
                     line += "     "
                 else:
-                    line += f"{self[x,y].weight:^5d}"
+                    weight = getattr(self[x,y], "long_weight", self[x,y].weight)
+                    line += f"{weight:^5d}"
             print(line)
 
     def walk(self, walker_class=Walker):
@@ -372,6 +398,10 @@ class Map:
 
 
     def lifegridsolver(self, print_=True):
+        # tried to do it without the "walker" agents: no avail, it is
+        # jut the same thing, but with tuples passed back and
+        # forth instead of walker instances.
+
         self.reset()
         self.generation = 0
         weight = 0
@@ -400,3 +430,59 @@ class Map:
                 print ("\r", i, len(self.current_gen), end="   ", flush=True)
             weight = next_weight
         return self.result
+
+    def reverse_first_solver(self, print_=False):
+        self.reset()
+
+        # (1) Annotate shorter paths to exit - normal dikstra stuff
+        walkers = {SimpleWalker(self, self.ending_pos)}
+        self[self.ending_pos].weight = 0
+        while walkers:
+            new_walkers = set()
+            for walker in walkers:
+                new_walkers.update(walker.step())
+            walkers = new_walkers
+
+        if print_:
+            self.print()
+        # 2 - from the beggining, follow a single path, taking _always_
+        # the longer turn
+
+        pos = self.starting_pos
+        last_pos = None
+        turn_stack = []
+        weight = 1
+        self[pos].long_weight = 0
+        self[pos].visited = 1
+        while True:
+            self[pos].visited = True
+            valid_paths = []
+            for direction in DIRECTIONS.values():
+                target = pos + direction
+                if target == last_pos: continue
+                if not self.inrange(target): continue
+                if (cell:=self[target]).is_wall: continue
+                if getattr(cell, "visited", False): continue
+                valid_paths.append(target)
+
+            if len(valid_paths) > 1:
+                turn_stack.append(pos)
+            elif len(valid_paths) == 0:
+                if not turn_stack:
+                    break
+                pos = turn_stack.pop()
+                weight = self[pos].long_weight
+                last_pos = self[pos].last_pos
+                continue
+            last_pos = pos
+
+            pos = max(valid_paths, key=lambda pos:self[pos].weight)
+            self[pos].visited = 1
+            self[pos].long_weight = weight
+            self[pos].last_pos = last_pos
+            weight += 1
+            if print_:
+                self.print()
+                time.sleep(0.1)
+
+        return self[self.ending_pos].long_weight
