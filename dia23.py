@@ -8,6 +8,8 @@ from copy import copy
 class GoalReached(Exception):
     pass
 
+def sgn(num):
+    return -1 if num < 0 else 0 if num == 0 else 1
 
 class V2(tuple):
     def __new__(cls, x, y=None):
@@ -31,10 +33,18 @@ class V2(tuple):
     def __sub__(self, other):
         return type(self)(self.x - other[0], self.y - other[1])
 
+    def __rsub__(self, other):
+        return type(self)(other[0] - self.x, other[1] - self.y)
+
     def __eq__(self, other):
         if not hasattr(other, "__len__") or len(other) != 2:
             return False
         return self[0] == other[0] and self[1] == other[1]
+
+    def __mul__(self, other):
+        return type(self)(other * self.x, other * self.y)
+
+    __rmul__ = __mul__
 
     def __hash__(self):
         return hash(tuple(self))
@@ -48,6 +58,64 @@ class V2(tuple):
     def manhattan(self, other):
         return abs(self[0] - other[0]) + abs(self[1] - other[1])
 
+
+class Rect:
+    def __init__(self, c1, c2):
+        # close ended at c2: final corner _is_part_ of rect.
+        self.c1 = V2(min(c1[0], c2[0]), min(c1[1], c2[1]))
+        self.c2 = V2(max(c1[0], c2[0]), max(c1[1], c2[1]))
+
+    def __contains__(self, pos):
+        return self.c1.x <= pos[0] <= self.c2.x and self.c1.y <= pos[1] <= self.c2.y
+
+    def linerange(self, c1, c2):
+        # open endded at C2 last cell, like "range"
+        direction = c2 - c1
+        if direction.x != 0 and direction.y != 0:
+            raise ValueError("linerange can only operate in vertical or horizontal lines")
+
+        step = V2(sgn(direction.x), sgn(direction.y))
+
+        pos = c1
+        while pos != c2:
+            yield pos
+            pos += step
+
+    def iter_wall(self, roi: "Rect"=None):
+        c1, c2 = self.c1, self.c2
+        if c1 == c2:
+            yield c1
+            return
+        for side in (
+            self.linerange(V2(c1.x, c2.y - 1), c1),
+            self.linerange(c1, (c2.x, c1.y)),
+            self.linerange(V2(c2.x, c2.y), c2),
+            self.linerange(c2, V2(c1.x, c2.y))
+        ):
+            for pos in side:
+                if roi is None or pos in roi:
+                    yield pos
+
+    @classmethod
+    def layers(cls, starting: "V2", roi: "Rect"):
+        """yields a series of growing rectangles centered on starting, until no
+        border cell fits inside the roi
+        """
+        starting = V2(starting)
+
+        side = 0
+        while True:
+            c1 = starting + side * V2(-1, -1)
+            c2 = starting + side * V2(1, 1)
+            c3 = (c2.x, c1.y)
+            c4 = (c1.x, c2.y)
+            if c1 not in roi and c2 not in roi and c3 not in roi and c4 not in roi:
+                break
+            yield cls(c1, c2)
+            side += 1
+
+    def __repr__(self):
+        return f"Rect({self.c1}, {self.c2})"
 
 NORTH = V2(0, -1)
 WEST = V2(-1, 0)
@@ -486,3 +554,18 @@ class Map:
                 time.sleep(0.1)
 
         return self[self.ending_pos].long_weight
+
+    def reverse_layers(self, starting_pos=None, roi=None, print_=False):
+        if starting_pos is None:
+            starting_pos = self.ending_pos
+            roi = Rect(V2(0,0), V2(self.width, self.height))
+            self.reset()
+
+        ##
+        #walkers = {SimpleWalker(self, self.ending_pos)}
+        #self[self.ending_pos].weight = 0
+        #while walkers:
+            #new_walkers = set()
+            #for walker in walkers:
+                #new_walkers.update(walker.step())
+            #walkers = new_walkers
