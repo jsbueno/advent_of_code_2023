@@ -114,6 +114,9 @@ class Rect:
             yield cls(c1, c2)
             side += 1
 
+    def shrink(self, n=1):
+        return type(self)(self.c1 + n * (1,1), self.c2 + n * (-1,-1))
+
     def __repr__(self):
         return f"Rect({self.c1}, {self.c2})"
 
@@ -349,6 +352,8 @@ class Cell:
         self.is_wall = char == "#"
         self.history = None
 
+        self.inner_source = None
+
         self.weight: "Optional[int]" = None
 
     def __repr__(self):
@@ -370,6 +375,7 @@ class Map:
         for y in range(self.height):
             for x in range(self.width):
                 self[x,y].weight = None
+                self[x,y].inner_source = None
 
         self.generation = 0
         self.current_gen = []
@@ -555,17 +561,111 @@ class Map:
 
         return self[self.ending_pos].long_weight
 
-    def reverse_layers(self, starting_pos=None, roi=None, print_=False):
+    def get_weight_from_neigbours(self, pos, roi, last_layer=frozenset()):
+        blank_inner = None
+        inner_source = None
+        neighbours = set()
+        for delta in DIRECTIONS.values():
+            target = pos + delta
+            if target not in roi:
+                continue
+            cell = self[target]
+            if cell.is_wall:
+                continue
+            neighbours.add((cell:=self[target]))
+            if target in last_layer:
+                if cell.weight is None:
+                    # an unvisited path in an inner layer has been found!
+                    blank_inner = target
+                else:
+                    inner_source = cell.weight
+
+        desired_neighbour = max(neighbours, key=lambda x: x.weight or 0)
+        if inner_source is None:
+            inner_source = desired_neighbour.inner_source or -1
+        else:
+            inner_source = max((inner_source, desired_neighbour.inner_source or -1))
+        return desired_neighbour.weight, inner_source, blank_inner
+
+
+
+    def reverse_layers(self, starting_pos=None, roi=None, last_layer=None, print_=True):
+        """6th attempt for a solution for part2:
+        we will draw concentric expanding rects around the exit, annotating the
+        longest path as "weight" olong these rects as we exapand.
+
+        recursive provisions should calculate any path-gains by inner loops
+        with entrances that just show up on outer-concentric-rect layers.
+
+        """
         if starting_pos is None:
             starting_pos = self.ending_pos
-            roi = Rect(V2(0,0), V2(self.width, self.height))
+            roi = Rect(V2(0,0), V2(self.width - 1, self.height - 1))
             self.reset()
 
-        ##
-        #walkers = {SimpleWalker(self, self.ending_pos)}
-        #self[self.ending_pos].weight = 0
-        #while walkers:
-            #new_walkers = set()
-            #for walker in walkers:
-                #new_walkers.update(walker.step())
-            #walkers = new_walkers
+        if last_layer is None:
+            last_layer = set()
+        for layer_num, layer in enumerate(Rect.layers(starting_pos, roi)):
+            layer_cells = set()
+            if layer_num == 0:
+                pos = layer.c1
+                if (w:=self.get_weight_from_neigbours(pos, roi)[0]) is None:
+                    # we are just getting started!
+                    #also a starting point, the "c1" in a zeroth layer
+                    # must always be a walkable point!
+                    # (either the maze exit or the entrance to an inner loop)
+                    if self[pos].is_wall:
+                        raise RuntimeError()
+                    self[pos].weight = 0
+                    self[pos].inner_source = 0
+                else:
+                    # we should just enter blank "starting pos"  -
+                    # but just in case, let's take the max!
+                    self[pos] = max(w + 1, self[pos].weight or 0)
+                last_layer = layer
+                continue
+
+            changed = True
+            blank_inners = []
+
+            while changed or blank_inners:
+                if blank_inners and not changed:
+                    new_roy = layer.shrink()
+                    for blank_inner in blank_inners:
+                        # Attention: these will always come up in pairs
+                        # not sure if starting at the wrong end will
+                        # self correct when the right-end if run.
+                        self.reverse_layers(blank_inner, new_roy, layer, print_)
+                    changed = True
+                    blank_inners = []
+                    continue
+
+                changed = False
+                for pos in layer.iter_wall(roi):
+                    if self[pos].is_wall:
+                        continue
+                    breakpoint()
+                    w, inner_source, blank_inner = self.get_weight_from_neigbours(pos, layer, last_layer)
+                    if blank_inner:
+                        #entrance to unvisited inner-loop (or dead end) found.
+                        blank_inners.append(blank_inner)
+
+
+                    if w is None:
+                        continue
+                        #raise RuntimeError()
+                    new_weight = w + 1
+                    # the "inner_source" means an inner-layer "source of truth" for the
+                    # cell being updated - and is what avoids cells in the same
+                    # layer to infinitelly augent one another.
+                    # (without having to manually handle contiguous regions in the same layer)
+                    if (self[pos].weight or 0) < new_weight and (self[pos].inner_source is None or    self[pos].inner_source < inner_source):
+                        changed = True
+                        self[pos].weight = new_weight
+                        sel[pos].inner_source = inner_source
+                if print_:
+                    self.print()
+                    time.sleep(0.4)
+            last_layer = layer_cells
+
+        return self[self.starting_pos].weight
