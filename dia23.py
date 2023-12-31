@@ -96,6 +96,12 @@ class Rect:
                 if roi is None or pos in roi:
                     yield pos
 
+    def apply_roi(self, roi):
+        c1 = V2(max(self.c1.x, roi.c1.x), max(self.c1.y, roi.c1.y))
+        c2 = V2(min(self.c2.x, roi.c2.x), min(self.c2.y, roi.c2.y))
+        return type(self)(c1, c2)
+
+
     @classmethod
     def layers(cls, starting: "V2", roi: "Rect"):
         """yields a series of growing rectangles centered on starting, until no
@@ -580,7 +586,7 @@ class Map:
                 else:
                     inner_source = cell.weight
 
-        desired_neighbour = max(neighbours, key=lambda x: x.weight or 0)
+        desired_neighbour = max(neighbours, key=lambda x: x.weight or -1)
         if inner_source is None:
             inner_source = desired_neighbour.inner_source or -1
         else:
@@ -622,7 +628,7 @@ class Map:
                     # we should just enter blank "starting pos"  -
                     # but just in case, let's take the max!
                     self[pos] = max(w + 1, self[pos].weight or 0)
-                last_layer = layer
+                last_layer = set(layer.c1)
                 continue
 
             changed = True
@@ -630,12 +636,12 @@ class Map:
 
             while changed or blank_inners:
                 if blank_inners and not changed:
-                    new_roy = layer.shrink()
+                    new_roy = layer.shrink().apply_roi(roi)
                     for blank_inner in blank_inners:
                         # Attention: these will always come up in pairs
                         # not sure if starting at the wrong end will
                         # self correct when the right-end if run.
-                        self.reverse_layers(blank_inner, new_roy, layer, print_)
+                        self.reverse_layers(blank_inner, new_roy, layer_cells, print_)
                     changed = True
                     blank_inners = []
                     continue
@@ -644,12 +650,11 @@ class Map:
                 for pos in layer.iter_wall(roi):
                     if self[pos].is_wall:
                         continue
-                    breakpoint()
+                    layer_cells.add(pos)
                     w, inner_source, blank_inner = self.get_weight_from_neigbours(pos, layer, last_layer)
                     if blank_inner:
                         #entrance to unvisited inner-loop (or dead end) found.
                         blank_inners.append(blank_inner)
-
 
                     if w is None:
                         continue
@@ -662,10 +667,10 @@ class Map:
                     if (self[pos].weight or 0) < new_weight and (self[pos].inner_source is None or    self[pos].inner_source < inner_source):
                         changed = True
                         self[pos].weight = new_weight
-                        sel[pos].inner_source = inner_source
+                        self[pos].inner_source = inner_source
                 if print_:
                     self.print()
-                    time.sleep(0.4)
+                    time.sleep(0.1)
             last_layer = layer_cells
 
         return self[self.starting_pos].weight
