@@ -410,10 +410,12 @@ class Map:
         self.data[pos[1]][pos[0]] = Cell(val)
 
     def print(self):
-        print("\x1b[H")
+        print("\x1b[H", end="")
         for y in range(self.height):
             line = ""
             for x in range(self.width):
+                if (x,y) in getattr(self, "roi", {}):
+                    line += "\x1b[45m"
                 if self[x, y].is_wall:
                     line += "#####"
                 elif self[x,y].weight is None:
@@ -421,6 +423,8 @@ class Map:
                 else:
                     weight = getattr(self[x,y], "long_weight", self[x,y].weight)
                     line += f"{weight:^5d}"
+                if (x,y) in getattr(self, "roi", {}):
+                    line += "\x1b[49m"
             print(line)
 
     def walk(self, walker_class=Walker):
@@ -563,11 +567,14 @@ class Map:
             weight += 1
             if print_:
                 self.print()
-                time.sleep(0.1)
+                time.sleep(0.2)
 
         return self[self.ending_pos].long_weight
 
     def get_weight_from_neigbours(self, pos, roi, last_layer=frozenset()):
+        #print(pos, last_layer)
+        #if self[pos].weight == 19:
+            #breakpoint()
         blank_inner = None
         inner_source = None
         neighbours = set()
@@ -578,20 +585,19 @@ class Map:
             cell = self[target]
             if cell.is_wall:
                 continue
-            neighbours.add((cell:=self[target]))
+            cell = self[target]
+            neighbours.add((cell, target))
             if target in last_layer:
                 if cell.weight is None:
                     # an unvisited path in an inner layer has been found!
                     blank_inner = target
                 else:
-                    inner_source = cell.weight
+                    inner_source = target
 
-        desired_neighbour = max(neighbours, key=lambda x: x.weight or -1)
-        if inner_source is None:
-            inner_source = desired_neighbour.inner_source or -1
-        else:
-            inner_source = max((inner_source, desired_neighbour.inner_source or -1))
-        return desired_neighbour.weight, inner_source, blank_inner
+        desired_neighbour = max(neighbours, key=lambda x: x[0].weight or -1)
+        if desired_neighbour[1] != inner_source:
+            inner_source = desired_neighbour[0].inner_source
+        return desired_neighbour[0].weight, inner_source, blank_inner
 
 
 
@@ -609,10 +615,9 @@ class Map:
             roi = Rect(V2(0,0), V2(self.width - 1, self.height - 1))
             self.reset()
 
-        if last_layer is None:
-            last_layer = set()
+        layer_cells = {}
         for layer_num, layer in enumerate(Rect.layers(starting_pos, roi)):
-            layer_cells = set()
+            layer_cells[layer_num] = set()
             if layer_num == 0:
                 pos = layer.c1
                 if (w:=self.get_weight_from_neigbours(pos, roi)[0]) is None:
@@ -632,29 +637,31 @@ class Map:
                 continue
 
             changed = True
-            blank_inners = []
+            blank_inners = {}
 
             while changed or blank_inners:
                 if blank_inners and not changed:
                     new_roy = layer.shrink().apply_roi(roi)
-                    for blank_inner in blank_inners:
-                        # Attention: these will always come up in pairs
-                        # not sure if starting at the wrong end will
-                        # self correct when the right-end if run.
-                        self.reverse_layers(blank_inner, new_roy, layer_cells, print_)
+                    # selects the inward entrance with the largest
+                    # weight in a neighboring cell
+                    blank_inner = max(
+                        blank_inners.items(),
+                        key=lambda item: item[1]
+                    )[0]
+                    self.reverse_layers(blank_inner, new_roy, layer_cells, print_)
                     changed = True
-                    blank_inners = []
+                    blank_inners = {}
                     continue
 
                 changed = False
                 for pos in layer.iter_wall(roi):
                     if self[pos].is_wall:
                         continue
-                    layer_cells.add(pos)
+                    layer_cells[layer_num].add(pos)
                     w, inner_source, blank_inner = self.get_weight_from_neigbours(pos, layer, last_layer)
                     if blank_inner:
                         #entrance to unvisited inner-loop (or dead end) found.
-                        blank_inners.append(blank_inner)
+                        blank_inners[blank_inner] = (w or 0) + 1
 
                     if w is None:
                         continue
@@ -664,13 +671,14 @@ class Map:
                     # cell being updated - and is what avoids cells in the same
                     # layer to infinitelly augent one another.
                     # (without having to manually handle contiguous regions in the same layer)
-                    if (self[pos].weight or 0) < new_weight and (self[pos].inner_source is None or    self[pos].inner_source < inner_source):
+                    if (self[pos].weight or 0) < new_weight and (self[pos].inner_source != inner_source):
                         changed = True
                         self[pos].weight = new_weight
                         self[pos].inner_source = inner_source
                 if print_:
+                    self.roi = layer
                     self.print()
                     time.sleep(0.1)
-            last_layer = layer_cells
+            last_layer = layer_cells.get(layer_num - 1, set())
 
         return self[self.starting_pos].weight
